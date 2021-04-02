@@ -668,7 +668,7 @@ Returns a tuple containing the seconds since epoch in the first element \n\
 static PyObject *
 alsapcm_info(alsapcm_t *self, PyObject *args)
 {
-	PyObject *info = PyDict_New();
+	PyObject *info;
 	PyObject *value;
 
 	unsigned int val,val2;
@@ -686,6 +686,8 @@ alsapcm_info(alsapcm_t *self, PyObject *args)
 		PyErr_SetString(ALSAAudioError, "PCM device is closed");
 		return NULL;
 	}
+
+	info = PyDict_New();
 
 	value=PyUnicode_FromString(snd_pcm_name(self->handle));
 	PyDict_SetItemString(info,"name",value);

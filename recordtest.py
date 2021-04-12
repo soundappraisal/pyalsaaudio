@@ -49,21 +49,25 @@ if __name__ == '__main__':
 	# This means that the reads below will return either 320 bytes of data
 	# or 0 bytes of data. The latter is possible because we are in nonblocking
 	# mode.
+	periodsize=48000
+	rate = 48000
 	inp = alsaaudio.PCM(alsaaudio.PCM_CAPTURE, alsaaudio.PCM_NONBLOCK, 
-		channels=1, rate=44100, format=alsaaudio.PCM_FORMAT_S16_LE, 
-		periodsize=160, device=device)
+		channels=1, rate=rate, format=alsaaudio.PCM_FORMAT_S16_LE, 
+		periodsize=periodsize, device=device)
 
 	print(inp.info())
 
 	inp.set_tstamp_mode()
 	inp.set_tstamp_type()
 
-	loops = 100000
+	loops = (10*rate)//periodsize
 	while loops > 0:
 		loops -= 1
 		# Read data from device
 		l, data = inp.read()
-		if l:
-			print(l, inp.htimestamp(), time.time())
-			f.write(data)
-			time.sleep(.001)
+		#if l:
+		ts_tuple = inp.htimestamp()
+		print(l, ts_tuple, time.time())
+		dt= (periodsize -ts_tuple[2])/rate
+		f.write(data)
+		time.sleep(dt)

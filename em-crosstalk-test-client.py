@@ -15,37 +15,19 @@
 
 #!/usr/bin/env python
 
-from __future__ import print_function
 
 import sys
 import time
 import argparse
-import wave
+import numpy as np
+
+import socket
+import json
+import base64
 
 import alsaaudio
 
-samplewidth_dict = {'S8':1,
-                    'U8':1,
-                    'S16_LE':2,
-                    'S16_BE':2,
-                    'U16_LE':2,
-                    'U16_BE':2,
-                    'S24_LE':3,
-                    'S24_BE':3,
-                    'U24_LE':3,
-                    'U24_BE':3,
-                    'S32_LE':4,
-                    'S32_BE':4,
-                    'U32_LE':4,
-                    'U32_BE':4,
-                    'FLOAT_LE':4,
-                    'FLOAT_BE':4,
-                    'FLOAT64_LE':8,
-                    'FLOAT64_BE':8,
-                    'S24_3LE':3,
-                    'S24_3BE':3,
-                    'U24_3LE':3,
-                    'U24_3BE':3,}
+from em_crosstalk_test_tools import wave_file_from_info
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Record sound to make possible electro-magnetic crosstalk visible.')
@@ -96,14 +78,6 @@ def parse_arguments():
     args = parser.parse_args()
 
     return args
-
-def wave_file_config_info(filename, pcm_info):
-    wave_file = wave.open(args.aec_file, 'wb')
-    wave_file.setnchannels(pcm_info['channels'])
-    wave_file.setsampwidth(samplewidth_dict[pcm_info['format_name']])
-    wave_file.setframerate(args.samplerate)
-
-    return wave_file
     
 def test_ae_crosstalk(args):
 
@@ -142,7 +116,7 @@ def test_ae_crosstalk(args):
             if start_time is None:
                 start_time = read_time
     
-            print(f'Write {l}-frames to file read at: {read_time}.')
+            print(f'Write {l}-frames to file recorded at time: {read_time}.')
             ae_crosstalk_wav.writeframes(data)
 
             if read_time - start_time > args.duration:
@@ -152,6 +126,8 @@ def test_ae_crosstalk(args):
         if dt > 0:
             time.sleep(dt)
 
+    pcm_device.close()
+
 def test_wifi_crosstalk(args):
 
     pcm_device = alsaaudio.PCM(alsaaudio.PCM_CAPTURE, 
@@ -159,16 +135,32 @@ def test_wifi_crosstalk(args):
                                channels=1, 
                                rate=args.samplerate, 
                                format=args.format, 
-                               periodsize=args.samplerate//10, 
+                               periodsize=args.samplerate, 
                                device=args.device)
 
     pcm_info = pcm_device.info()
     print(pcm_info)
     
-    ae_crosstalk_wav = wave_file_from_info(args.aec_file,pcm_info)
+    ae_crosstalk_wav = wave_file_from_info(args.wifi_file, pcm_info)
 
     periodsize =  pcm_info['period_size']
     
+    ip_address, ip_port = args.remote.split(':')
+    buffersize = 4096
+    print(f'ip_address: {ip_address}, ip_port:{ int(ip_port)}')
+    pcm_info['msg_type']='pcm_info'
+    msg = json.dumps(pcm_info)
+    print(f'msg: {msg}, type: {type(msg)}')
+
+    wifi_socket = socket.socket (socket.AF_INET, socket.SOCK_STREAM)
+    wifi_socket.connect((ip_address, int(ip_port)))
+
+
+    encoded_msg = msg.encode('utf-8')
+    print(f'length {len( encoded_msg)}')
+    wifi_socket.send(encoded_msg)
+
+    time.sleep(1)
 
     pcm_device.set_tstamp_mode()
     pcm_device.set_tstamp_type()
@@ -178,27 +170,58 @@ def test_wifi_crosstalk(args):
 
     acquisition_on = True
 
+    newdata = False
+    pointer = 0
+    network_interval = 0.1
+    network_interval_bytes = int(np.floor(0.1*args.samplerate))*ae_crosstalk_wav.getsampwidth()
+
+    data_to_send_old = None
+    data_to_send = None
     while acquisition_on:
         # Read data from device
-        l, data = pcm_device.read()
         ts_tuple = pcm_device.htimestamp()
 
-        if l > 0:
+        if ts_tuple[2] > periodsize or start_time is None:
+            l, data = pcm_device.read()
+            ts_tuple = pcm_device.htimestamp()
+            if l > 0:
+                read_time = ts_tuple[0]+ 1e-9* ts_tuple[1] 
+                if start_time is None:
+                    start_time = read_time
+                    socket_time = start_time
+        
+                print(f'Write {l}-frames to file recorded at time: {read_time}. Type data: {type(data)}')
+                ae_crosstalk_wav.writeframes(data)
+
+                if read_time - start_time > args.duration:
+                    print(f'read_time: {read_time}, start_time: {start_time}, duration: {args.duration}')
+                    acquisition_on = False 
+
+                newdata = True
+
+                if data_to_send is not None:
+                    data_to_send_old = data_to_send
+
+                data_to_send = data
+                print(f'length data_to_send {len( data_to_send)}, acquisition_on: {acquisition_on}')
+
+        current_time = time.time()
+        if start_time is not None and  current_time - socket_time > network_interval:
+            if len(data_to_send) > 0:
+                if not newdata:
+                    print(current_time)
+                    wifi_socket.send(data_to_send[pointer:pointer+network_interval_bytes])
+                    pointer+=network_interval_bytes
+                    socket_time = current_time 
+                else:
+                    if data_to_send_old is not None:
+                        wifi_socket.send(data_to_send[pointer:])
+                    pointer = 0
+                    newdata = False
+
             
-            read_time = ts_tuple[0]+ 1e-9* ts_tuple[1] 
-            if start_time is None:
-                start_time = read_time
-    
-            print(f'Write {l}-frames to file read at: {read_time}.')
-            ae_crosstalk_wav.writeframes(data)
-
-            if read_time - start_time > args.duration:
-                acquisition_on = False
-
-        dt = (periodsize-ts_tuple[2])/args.samplerate
-        if dt > 0:
-            time.sleep(dt)
-
+    wifi_socket.send(b'')
+    wifi_socket.close()
 
 
 if __name__ == '__main__':
@@ -206,5 +229,8 @@ if __name__ == '__main__':
 
     args = parse_arguments()
     print(args)
-    test_ae_crosstalk(args)
+
+    # test_ae_crosstalk(args)
+
+    test_wifi_crosstalk(args)
    

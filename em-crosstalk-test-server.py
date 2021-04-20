@@ -27,7 +27,9 @@ message_raw  = con.recv(BUF_SIZE)
 print(message_raw)
 message = message_raw.decode('utf-8')
 data_dictionary = json.loads(message)
-wavfile = wave_file_from_info('wifi-crosstalk-serverside.wav', data_dictionary)
+name = data_dictionary['name'].replace(':','_').replace(',','_')
+
+wavfile = wave_file_from_info(f'wifi-crosstalk-serverside_{name}.wav', data_dictionary)
 
 while socket_open:
     message_raw = con.recv(BUF_SIZE)

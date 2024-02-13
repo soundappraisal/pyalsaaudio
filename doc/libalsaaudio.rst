@@ -232,6 +232,7 @@ PCM objects have the following methods:
    get_periods                  *approx. periods in buffer*       integer (negative indicates error)
    rate_numden                  *numerator, denominator*          tuple (integer (Hz), integer (Hz))
    significant_bits             *significant bits in sample*      integer (negative indicates error)
+   physical_bits                *sample width in bits*            integer (negative indicates error)
    is_batch                     *hw: double buffering*            boolean (True: hardware supported)
    is_block_transfer            *hw: block transfer*              boolean (True: hardware supported)
    is_double                    *hw: double buffering*            boolean (True: hardware supported)

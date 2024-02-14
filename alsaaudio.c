@@ -403,7 +403,7 @@ static int alsapcm_setup(alsapcm_t *self)
 	snd_pcm_hw_params_get_period_size(hwparams, &self->periodsize, &dir);
 	snd_pcm_hw_params_get_periods(hwparams, &self->periods, &dir);
 
-	self->framesize = self->channels * snd_pcm_hw_params_get_sbits(hwparams)/8;
+	self->framesize = self->channels * snd_pcm_format_physical_width(self->format)/8;
 
 	return res;
 }
@@ -598,6 +598,9 @@ alsapcm_dumpinfo(alsapcm_t *self, PyObject *args)
 	val = snd_pcm_hw_params_get_sbits(hwparams);
 	printf("significant bits = %d\n", val);
 
+	val = snd_pcm_format_physical_width(self->format);
+	printf("physical bits = %d\n", val);
+
 	val = snd_pcm_hw_params_is_batch(hwparams);
 	printf("is batch = %d\n", val);
 
@@ -776,6 +779,11 @@ alsapcm_info(alsapcm_t *self, PyObject *args)
 	val = snd_pcm_hw_params_get_sbits(hwparams);
 	value=PyLong_FromUnsignedLong((unsigned long) val);
 	PyDict_SetItemString(info,"significant_bits", value);
+	Py_DECREF(value);
+
+	val = snd_pcm_format_physical_width(self->format);
+	value=PyLong_FromUnsignedLong((unsigned long) val);
+	PyDict_SetItemString(info,"physical_bits", value);
 	Py_DECREF(value);
 
 	val = snd_pcm_hw_params_is_batch(hwparams);
